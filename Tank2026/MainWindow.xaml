@@ -1,0 +1,31 @@
+﻿<Window x:Class="Tank2026.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Tank2026"
+        mc:Ignorable="d"
+        Title="Tank 1990 MVP" Height="520" Width="700"
+        KeyDown="Window_KeyDown">
+    <Grid Background="#1B1B1B">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="8">
+            <TextBlock
+                Foreground="White"
+                Text="Move: Arrow Keys | Shoot: Space | Pause: P | Restart: R"
+                FontSize="14" />
+            <TextBlock
+                x:Name="StatusTextBlock"
+                Foreground="#C8FFC8"
+                FontSize="13" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Margin="8" BorderBrush="#333" BorderThickness="2">
+            <Canvas x:Name="GameCanvas" Background="Black" />
+        </Border>
+    </Grid>
+</Window>

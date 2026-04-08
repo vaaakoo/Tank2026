@@ -1,0 +1,11 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+C:\Users\vjani\source\repos\Tank2026\Tank2026\UI\GameRenderer.cs(43,33): error CS0103: The name '_enemyTankBrush' does not exist in the current context [C:\Users\vjani\source\repos\Tank2026\Tank2026\Tank2026_3mbgyvcv_wpftmp.csproj]
+
+Build FAILED.
+
+C:\Users\vjani\source\repos\Tank2026\Tank2026\UI\GameRenderer.cs(43,33): error CS0103: The name '_enemyTankBrush' does not exist in the current context [C:\Users\vjani\source\repos\Tank2026\Tank2026\Tank2026_3mbgyvcv_wpftmp.csproj]
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:01.31

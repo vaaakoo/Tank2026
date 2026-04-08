@@ -13,11 +13,18 @@ public class GameEngine
     private int _playerShootCooldown;
     private int _enemiesSpawnedTotal;
 
-    public Map Map { get; }
+    public int CurrentLevel { get; private set; } = 0;
+    public Map Map { get; private set; }
     public Tank PlayerTank { get; }
     public List<Tank> Enemies { get; } = [];
     public List<Bullet> Bullets { get; } = [];
     public List<Explosion> Explosions { get; } = [];
+    public List<Powerup> Powerups { get; } = [];
+
+    private int _enemyFreezeTicks;
+    private int _shovelTicks;
+    private int _elapsedMs;
+
     public bool IsGameOver { get; private set; }
     public bool IsPaused { get; private set; }
     public string StatusText { get; private set; } = "Battle started";
@@ -30,7 +37,7 @@ public class GameEngine
     public GameEngine(CollisionService collisionService)
     {
         _collisionService = collisionService;
-        Map = Map.CreateDefault();
+        Map = MapLoader.LoadLevel(CurrentLevel);
         _enemySpawnPoints =
         [
             (1, 1),
@@ -83,28 +90,37 @@ public class GameEngine
 
     public void Restart()
     {
-        Bullets.Clear();
-        Explosions.Clear();
-        MapResetToDefault();
-
-        PlayerTank.X = 1;
-        PlayerTank.Y = Map.Height - 2;
-        PlayerTank.Direction = Direction.Up;
-        PlayerTank.IsAlive = true;
-
-        Enemies.Clear();
-        _enemiesSpawnedTotal = 0;
-        SpawnEnemiesIfNeeded();
+        CurrentLevel = 0;
+        AdvanceLevelInternal();
 
         PlayerLives = GameSettings.PlayerStartingLives;
         Score = 0;
-        EnemyKills = 0;
         IsGameOver = false;
         IsPaused = false;
         _playerShootCooldown = 0;
 
         UpdateHudText();
         GameUpdated?.Invoke();
+    }
+
+    private void AdvanceLevelInternal()
+    {
+        Map = MapLoader.LoadLevel(CurrentLevel);
+        Bullets.Clear();
+        Explosions.Clear();
+
+        PlayerTank.X = 1;
+        PlayerTank.Y = Map.Height - 2;
+        PlayerTank.Direction = Direction.Up;
+        PlayerTank.IsAlive = true;
+
+        _elapsedMs = 0;
+        _timer.Interval = TimeSpan.FromMilliseconds(GameSettings.UpdateIntervalMs);
+
+        Enemies.Clear();
+        _enemiesSpawnedTotal = 0;
+        EnemyKills = 0;
+        SpawnEnemiesIfNeeded();
     }
 
     public void TogglePause()
@@ -127,12 +143,37 @@ public class GameEngine
             return;
         }
 
+        _elapsedMs += (int)_timer.Interval.TotalMilliseconds;
+        var minutes = _elapsedMs / 60000.0;
+        int newInterval = GameSettings.UpdateIntervalMs - (int)(150 * (minutes / 2.0));
+        if (newInterval < 100) newInterval = 100;
+
+        if (newInterval != (int)_timer.Interval.TotalMilliseconds)
+        {
+            _timer.Interval = TimeSpan.FromMilliseconds(newInterval);
+        }
+
         if (_playerShootCooldown > 0)
         {
             _playerShootCooldown--;
         }
 
-        UpdateEnemyActions();
+        if (_shovelTicks > 0)
+        {
+            _shovelTicks--;
+            if (_shovelTicks == 0) ApplyShovel(false);
+        }
+
+        if (_enemyFreezeTicks > 0)
+        {
+            _enemyFreezeTicks--;
+        }
+        else
+        {
+            UpdateEnemyActions();
+        }
+
+        UpdatePowerups();
         UpdateBullets();
         UpdateExplosions();
         SpawnEnemiesIfNeeded();
@@ -159,7 +200,7 @@ public class GameEngine
             {
                 enemy.Direction = SelectEnemyDirection(enemy);
                 MoveTankIfPossible(enemy);
-                enemy.MoveCooldown = 2;
+                enemy.MoveCooldown = enemy.MaxMoveCooldown;
             }
 
             if (enemy.ShootCooldown > 0)
@@ -262,14 +303,36 @@ public class GameEngine
             var enemy = Enemies.FirstOrDefault(t => t.IsAlive && t.X == targetX && t.Y == targetY);
             if (enemy is not null)
             {
-                enemy.IsAlive = false;
-                EnemyKills++;
-                Score += 100;
-                AddExplosion(enemy.X, enemy.Y);
-                if (EnemyKills >= GameSettings.EnemyKillTarget)
+                enemy.Health--;
+                if (enemy.Health <= 0)
                 {
-                    IsGameOver = true;
-                    StatusText = "You win! Press R to restart.";
+                    enemy.IsAlive = false;
+                    EnemyKills++;
+                    Score += enemy.EnemyType == EnemyType.Armor ? 400 : 100;
+                    AddExplosion(enemy.X, enemy.Y);
+
+                    if (enemy.IsFlashing)
+                    {
+                        Powerups.Add(new Powerup { X = enemy.X, Y = enemy.Y, Type = (PowerupType)_random.Next(0, 5) });
+                    }
+
+                    if (EnemyKills >= GameSettings.EnemyKillTarget)
+                    {
+                        CurrentLevel++;
+                        if (CurrentLevel >= MapLoader.MaxLevels)
+                        {
+                            IsGameOver = true;
+                            StatusText = "You beat all levels! Press R to restart.";
+                        }
+                        else
+                        {
+                            AdvanceLevelInternal();
+                        }
+                    }
+                }
+                else
+                {
+                    // Flash when hit? Optional.
                 }
 
                 return true;
@@ -369,6 +432,26 @@ public class GameEngine
                 break;
             }
 
+            var typeChance = _random.Next(0, 100);
+            EnemyType eType = EnemyType.Basic;
+            int health = 1;
+            int maxMoveSpeed = 2;
+
+            if (typeChance < 20)
+            {
+                eType = EnemyType.Fast;
+                maxMoveSpeed = 0;
+            }
+            else if (typeChance < 40)
+            {
+                eType = EnemyType.Power;
+            }
+            else if (typeChance < 60)
+            {
+                eType = EnemyType.Armor;
+                health = 4;
+            }
+
             Enemies.Add(new Tank
             {
                 IsPlayer = false,
@@ -376,6 +459,10 @@ public class GameEngine
                 X = spawn.x,
                 Y = spawn.y,
                 Direction = Direction.Down,
+                EnemyType = eType,
+                Health = health,
+                MaxMoveCooldown = maxMoveSpeed,
+                IsFlashing = _random.Next(0, 10) < 2,
                 MoveCooldown = _random.Next(0, 2),
                 ShootCooldown = _random.Next(1, 4)
             });
@@ -408,7 +495,7 @@ public class GameEngine
     private string BuildHudText()
     {
         var remaining = GameSettings.EnemyKillTarget - EnemyKills;
-        return $"Lives: {PlayerLives} | Score: {Score} | Kills: {EnemyKills}/{GameSettings.EnemyKillTarget} | Enemies: {Enemies.Count} | Remaining: {remaining}";
+        return $"Level: {CurrentLevel + 1} | Lives: {PlayerLives} | Score: {Score} | Kills: {EnemyKills}/{GameSettings.EnemyKillTarget} | Enemies: {Enemies.Count} | Remaining: {remaining}";
     }
 
     private void UpdateHudText()
@@ -421,14 +508,57 @@ public class GameEngine
         StatusText = BuildHudText();
     }
 
-    private void MapResetToDefault()
+    private void UpdatePowerups()
     {
-        var newMap = Map.CreateDefault();
-        for (var y = 0; y < Map.Height; y++)
+        for (var i = Powerups.Count - 1; i >= 0; i--)
         {
-            for (var x = 0; x < Map.Width; x++)
+            var p = Powerups[i];
+            if (PlayerTank.IsAlive && Math.Abs(PlayerTank.X - p.X) <= 1 && Math.Abs(PlayerTank.Y - p.Y) <= 1)
             {
-                Map.SetTile(x, y, newMap.GetTile(x, y));
+                ApplyPowerup(p.Type);
+                Powerups.RemoveAt(i);
+                Score += 500;
+            }
+        }
+    }
+
+    private void ApplyPowerup(PowerupType type)
+    {
+        switch (type)
+        {
+            case PowerupType.Grenade:
+                foreach (var enemy in Enemies.Where(e => e.IsAlive))
+                {
+                    enemy.IsAlive = false;
+                    EnemyKills++;
+                    AddExplosion(enemy.X, enemy.Y);
+                }
+                break;
+            case PowerupType.Timer:
+                _enemyFreezeTicks = 100;
+                break;
+            case PowerupType.Star:
+            case PowerupType.Life:
+                PlayerLives++;
+                break;
+            case PowerupType.Shovel:
+                _shovelTicks = 250;
+                ApplyShovel(true);
+                break;
+        }
+    }
+
+    private void ApplyShovel(bool active)
+    {
+        var tile = active ? TileType.Steel : TileType.Brick;
+        var baseX = Map.Width / 2;
+        var baseY = Map.Height - 2;
+        for (var y = baseY - 1; y <= baseY; y++)
+        {
+            for (var x = baseX - 1; x <= baseX + 1; x++)
+            {
+                if (x == baseX && y == baseY) continue;
+                Map.SetTile(x, y, tile);
             }
         }
     }

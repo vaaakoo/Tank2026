@@ -1,3 +1,5 @@
+using System;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -10,6 +12,14 @@ namespace Tank2026.UI;
 public class GameRenderer
 {
     private readonly Canvas _canvas;
+    private readonly Brush _playerTankBrush = SpriteBrushes.GetTankBrush(Brushes.Yellow);
+    private readonly Brush _enemyBasicBrush = SpriteBrushes.GetTankBrush(Brushes.Silver);
+    private readonly Brush _enemyFastBrush = SpriteBrushes.GetTankBrush(Brushes.LightPink);
+    private readonly Brush _enemyPowerBrush = SpriteBrushes.GetTankBrush(Brushes.OrangeRed);
+    private readonly Brush _enemyArmor4Brush = SpriteBrushes.GetTankBrush(Brushes.ForestGreen);
+    private readonly Brush _enemyArmor3Brush = SpriteBrushes.GetTankBrush(Brushes.GreenYellow);
+    private readonly Brush _enemyArmor2Brush = SpriteBrushes.GetTankBrush(Brushes.Yellow);
+    private readonly Brush _powerupFlashBrush = SpriteBrushes.GetTankBrush(new SolidColorBrush(Color.FromRgb(255, 100, 100)));
 
     public GameRenderer(Canvas canvas)
     {
@@ -23,17 +33,54 @@ public class GameRenderer
         DrawMap(gameEngine.Map);
         if (gameEngine.PlayerTank.IsAlive)
         {
-            DrawTank(gameEngine.PlayerTank, Brushes.DeepSkyBlue);
+            DrawTank(gameEngine.PlayerTank, _playerTankBrush);
         }
+
+        var isFlashTick = DateTime.Now.Millisecond % 400 < 200;
+
         foreach (var enemy in gameEngine.Enemies)
         {
             if (enemy.IsAlive)
             {
-                DrawTank(enemy, Brushes.OrangeRed);
+                Brush brush = _enemyBasicBrush;
+                if (enemy.IsFlashing && isFlashTick)
+                {
+                    brush = _powerupFlashBrush;
+                }
+                else
+                {
+                    brush = enemy.EnemyType switch
+                    {
+                        EnemyType.Fast => _enemyFastBrush,
+                        EnemyType.Power => _enemyPowerBrush,
+                        EnemyType.Armor => enemy.Health >= 4 ? _enemyArmor4Brush : enemy.Health == 3 ? _enemyArmor3Brush : enemy.Health == 2 ? _enemyArmor2Brush : _enemyBasicBrush,
+                        _ => _enemyBasicBrush
+                    };
+                }
+                DrawTank(enemy, brush);
             }
         }
         DrawBullets(gameEngine.Bullets);
         DrawExplosions(gameEngine.Explosions);
+        DrawPowerups(gameEngine.Powerups);
+    }
+
+    private void DrawPowerups(System.Collections.Generic.IEnumerable<Powerup> powerups)
+    {
+        var isFlash = DateTime.Now.Millisecond % 400 < 200;
+        foreach (var p in powerups)
+        {
+            var text = new TextBlock
+            {
+                Text = p.Type.ToString().Substring(0, 1),
+                Foreground = isFlash ? Brushes.Red : Brushes.White,
+                FontWeight = FontWeights.Bold,
+                FontSize = 24
+            };
+            Canvas.SetLeft(text, p.X * GameSettings.TileSize + 8);
+            Canvas.SetTop(text, p.Y * GameSettings.TileSize + 2);
+            _canvas.Children.Add(text);
+        }
     }
 
     private void DrawMap(Map map)
@@ -55,97 +102,69 @@ public class GameRenderer
 
     private void DrawTile(int x, int y, TileType tileType)
     {
-        switch (tileType)
+        Brush fill = tileType switch
         {
-            case TileType.Brick:
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(156, 74, 36)), 0);
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(110, 45, 20)), 6);
-                break;
-            case TileType.Steel:
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(140, 140, 145)), 0);
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(95, 95, 100)), 8);
-                break;
-            case TileType.Water:
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(30, 120, 220)), 0);
-                DrawCell(x, y, new SolidColorBrush(Color.FromArgb(120, 190, 230, 255)), 10);
-                break;
-            case TileType.Grass:
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(40, 140, 60)), 0);
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(60, 170, 80)), 12);
-                break;
-            case TileType.Base:
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(200, 190, 70)), 0);
-                DrawCell(x, y, new SolidColorBrush(Color.FromRgb(80, 50, 30)), 10);
-                break;
-        }
+            TileType.Brick => SpriteBrushes.BrickBrush,
+            TileType.Steel => SpriteBrushes.SteelBrush,
+            TileType.Water => SpriteBrushes.WaterBrush,
+            TileType.Grass => SpriteBrushes.GrassBrush,
+            TileType.Base => SpriteBrushes.BaseBrush,
+            _ => Brushes.Transparent
+        };
+
+        if (fill == Brushes.Transparent) return;
+
+        var rect = new Rectangle
+        {
+            Width = GameSettings.TileSize,
+            Height = GameSettings.TileSize,
+            Fill = fill
+        };
+
+        Canvas.SetLeft(rect, x * GameSettings.TileSize);
+        Canvas.SetTop(rect, y * GameSettings.TileSize);
+        _canvas.Children.Add(rect);
     }
 
-    private void DrawTank(Tank tank, Brush color)
+    private void DrawTank(Tank tank, Brush brush)
     {
-        var tankSize = GameSettings.TileSize - 4;
-        var left = tank.X * GameSettings.TileSize + 2;
-        var top = tank.Y * GameSettings.TileSize + 2;
-
-        // Square tank body (retro look).
-        var body = new Rectangle
+        var rect = new Rectangle
         {
-            Width = tankSize,
-            Height = tankSize,
-            Fill = color,
-            Stroke = Brushes.Black,
-            StrokeThickness = 1
-        };
-        Canvas.SetLeft(body, left);
-        Canvas.SetTop(body, top);
-        _canvas.Children.Add(body);
-
-        var barrel = new Rectangle
-        {
-            Width = 6,
-            Height = 14,
-            Fill = Brushes.White
+            Width = GameSettings.TileSize,
+            Height = GameSettings.TileSize,
+            Fill = brush
         };
 
-        var centerX = left + tankSize / 2.0;
-        var centerY = top + tankSize / 2.0;
-
-        switch (tank.Direction)
+        var rotation = tank.Direction switch
         {
-            case Direction.Up:
-                Canvas.SetLeft(barrel, centerX - 3);
-                Canvas.SetTop(barrel, top - 3);
-                break;
-            case Direction.Down:
-                Canvas.SetLeft(barrel, centerX - 3);
-                Canvas.SetTop(barrel, top + tankSize - 10);
-                break;
-            case Direction.Left:
-                barrel.Width = 14;
-                barrel.Height = 6;
-                Canvas.SetLeft(barrel, left - 3);
-                Canvas.SetTop(barrel, centerY - 3);
-                break;
-            case Direction.Right:
-                barrel.Width = 14;
-                barrel.Height = 6;
-                Canvas.SetLeft(barrel, left + tankSize - 10);
-                Canvas.SetTop(barrel, centerY - 3);
-                break;
+            Direction.Up => 0,
+            Direction.Right => 90,
+            Direction.Down => 180,
+            Direction.Left => 270,
+            _ => 0
+        };
+
+        if (rotation != 0)
+        {
+            rect.RenderTransformOrigin = new Point(0.5, 0.5);
+            rect.RenderTransform = new RotateTransform(rotation);
         }
 
-        _canvas.Children.Add(barrel);
+        Canvas.SetLeft(rect, tank.X * GameSettings.TileSize);
+        Canvas.SetTop(rect, tank.Y * GameSettings.TileSize);
+        _canvas.Children.Add(rect);
     }
 
-    private void DrawBullets(IEnumerable<Bullet> bullets)
+    private void DrawBullets(System.Collections.Generic.IEnumerable<Bullet> bullets)
     {
         foreach (var bullet in bullets)
         {
-            var size = GameSettings.TileSize / 3.0;
+            var size = GameSettings.TileSize / 4.0;
             var bulletShape = new Ellipse
             {
                 Width = size,
                 Height = size,
-                Fill = Brushes.Yellow
+                Fill = Brushes.Silver
             };
 
             var offset = (GameSettings.TileSize - size) / 2.0;
@@ -155,18 +174,24 @@ public class GameRenderer
         }
     }
 
-    private void DrawExplosions(IEnumerable<Explosion> explosions)
+    private void DrawExplosions(System.Collections.Generic.IEnumerable<Explosion> explosions)
     {
         foreach (var explosion in explosions)
         {
             var progress = explosion.RemainingTicks / (double)GameSettings.ExplosionDurationTicks;
-            var size = GameSettings.TileSize * (0.4 + (1 - progress) * 0.8);
+            var size = GameSettings.TileSize * (0.6 + (1 - progress) * 0.4);
 
-            var flash = new Ellipse
+            var group = new DrawingGroup();
+            group.Children.Add(new GeometryDrawing(Brushes.Red, null, new EllipseGeometry(new Point(0.5, 0.5), 0.5, 0.5)));
+            group.Children.Add(new GeometryDrawing(Brushes.Yellow, null, new EllipseGeometry(new Point(0.5, 0.5), 0.3, 0.3)));
+            group.Children.Add(new GeometryDrawing(Brushes.White, null, new EllipseGeometry(new Point(0.5, 0.5), 0.1, 0.1)));
+
+            var flash = new Rectangle
             {
                 Width = size,
                 Height = size,
-                Fill = new SolidColorBrush(Color.FromArgb((byte)(200 * progress), 255, 170, 0))
+                Fill = new DrawingBrush(group) { Stretch = Stretch.Fill },
+                Opacity = Math.Max(0, progress)
             };
 
             var left = explosion.X * GameSettings.TileSize + (GameSettings.TileSize - size) / 2;
@@ -175,19 +200,5 @@ public class GameRenderer
             Canvas.SetTop(flash, top);
             _canvas.Children.Add(flash);
         }
-    }
-
-    private void DrawCell(int gridX, int gridY, Brush fill, double margin)
-    {
-        var rect = new Rectangle
-        {
-            Width = GameSettings.TileSize - margin,
-            Height = GameSettings.TileSize - margin,
-            Fill = fill
-        };
-
-        Canvas.SetLeft(rect, gridX * GameSettings.TileSize + margin / 2);
-        Canvas.SetTop(rect, gridY * GameSettings.TileSize + margin / 2);
-        _canvas.Children.Add(rect);
     }
 }

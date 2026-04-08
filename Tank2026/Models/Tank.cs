@@ -9,4 +9,9 @@ public class Tank : GameObject
     public bool IsAlive { get; set; } = true;
     public int MoveCooldown { get; set; }
     public int ShootCooldown { get; set; }
+
+    public EnemyType EnemyType { get; set; }
+    public int Health { get; set; } = 1;
+    public int MaxMoveCooldown { get; set; } = 2;
+    public bool IsFlashing { get; set; }
 }

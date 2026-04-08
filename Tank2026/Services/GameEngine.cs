@@ -25,6 +25,9 @@ public class GameEngine
     private int _shovelTicks;
     private int _elapsedMs;
 
+    public int PlayerPowerLevel { get; private set; } = 1;
+    public int PlayerShieldTicks { get; private set; }
+
     public bool IsGameOver { get; private set; }
     public bool IsPaused { get; private set; }
     public string StatusText { get; private set; } = "Battle started";
@@ -85,7 +88,12 @@ public class GameEngine
             return;
         }
 
-        _playerShootCooldown = TryFireFromTank(PlayerTank, _playerShootCooldown, 2);
+        var activeBullets = Bullets.Count(b => b.FiredByPlayer);
+        var maxBullets = PlayerPowerLevel >= 3 ? 2 : 1;
+        if (activeBullets >= maxBullets) return;
+
+        var cooldown = PlayerPowerLevel >= 2 ? 1 : 2;
+        _playerShootCooldown = TryFireFromTank(PlayerTank, _playerShootCooldown, cooldown);
     }
 
     public void Restart()
@@ -113,6 +121,7 @@ public class GameEngine
         PlayerTank.Y = Map.Height - 2;
         PlayerTank.Direction = Direction.Up;
         PlayerTank.IsAlive = true;
+        PlayerShieldTicks = 40;
 
         _elapsedMs = 0;
         _timer.Interval = TimeSpan.FromMilliseconds(GameSettings.UpdateIntervalMs);
@@ -156,6 +165,11 @@ public class GameEngine
         if (_playerShootCooldown > 0)
         {
             _playerShootCooldown--;
+        }
+
+        if (PlayerShieldTicks > 0)
+        {
+            PlayerShieldTicks--;
         }
 
         if (_shovelTicks > 0)
@@ -293,6 +307,10 @@ public class GameEngine
                     StatusText = "Castle destroyed! Press R to restart.";
                 }
             }
+            else if (hitTile == TileType.Steel && bullet.FiredByPlayer && PlayerPowerLevel >= 4)
+            {
+                Map.SetTile(targetX, targetY, TileType.Empty);
+            }
 
             AddExplosion(targetX, targetY);
             return true;
@@ -350,12 +368,13 @@ public class GameEngine
 
     private void HandlePlayerHit()
     {
-        if (!PlayerTank.IsAlive || IsGameOver)
+        if (!PlayerTank.IsAlive || IsGameOver || PlayerShieldTicks > 0)
         {
             return;
         }
 
         PlayerLives--;
+        PlayerPowerLevel = 1;
         if (PlayerLives <= 0)
         {
             PlayerTank.IsAlive = false;
@@ -367,6 +386,7 @@ public class GameEngine
         PlayerTank.X = 1;
         PlayerTank.Y = Map.Height - 2;
         PlayerTank.Direction = Direction.Up;
+        PlayerShieldTicks = 40;
     }
 
     private bool IsOtherTankOnCell(Tank movingTank, int x, int y)
@@ -413,8 +433,24 @@ public class GameEngine
 
         var baseX = Map.Width / 2;
         var baseY = Map.Height - 2;
-        var targetX = _random.Next(0, 100) < 60 ? PlayerTank.X : baseX;
-        var targetY = _random.Next(0, 100) < 60 ? PlayerTank.Y : baseY;
+        int targetX, targetY;
+
+        if (enemy.EnemyType == EnemyType.Fast)
+        {
+            targetX = PlayerTank.X;
+            targetY = PlayerTank.Y;
+        }
+        else if (enemy.EnemyType == EnemyType.Armor)
+        {
+            targetX = baseX;
+            targetY = baseY;
+        }
+        else
+        {
+            targetX = _random.Next(0, 100) < 60 ? PlayerTank.X : baseX;
+            targetY = _random.Next(0, 100) < 60 ? PlayerTank.Y : baseY;
+        }
+
         var dx = targetX - enemy.X;
         var dy = targetY - enemy.Y;
         return Math.Abs(dx) > Math.Abs(dy)
@@ -538,6 +574,8 @@ public class GameEngine
                 _enemyFreezeTicks = 100;
                 break;
             case PowerupType.Star:
+                if (PlayerPowerLevel < 4) PlayerPowerLevel++;
+                break;
             case PowerupType.Life:
                 PlayerLives++;
                 break;

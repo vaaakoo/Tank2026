@@ -34,6 +34,20 @@ public class GameRenderer
         if (gameEngine.PlayerTank.IsAlive)
         {
             DrawTank(gameEngine.PlayerTank, _playerTankBrush);
+            if (gameEngine.PlayerShieldTicks > 0 && DateTime.Now.Millisecond % 200 < 100)
+            {
+                var shield = new Rectangle
+                {
+                    Width = GameSettings.TileSize + 6,
+                    Height = GameSettings.TileSize + 6,
+                    Stroke = Brushes.Cyan,
+                    StrokeThickness = 2,
+                    Fill = Brushes.Transparent
+                };
+                Canvas.SetLeft(shield, gameEngine.PlayerTank.X * GameSettings.TileSize - 3);
+                Canvas.SetTop(shield, gameEngine.PlayerTank.Y * GameSettings.TileSize - 3);
+                _canvas.Children.Add(shield);
+            }
         }
 
         var isFlashTick = DateTime.Now.Millisecond % 400 < 200;

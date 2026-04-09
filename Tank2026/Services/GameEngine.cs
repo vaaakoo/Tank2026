@@ -1,6 +1,7 @@
 using System.Windows.Threading;
 using Tank2026.Core;
 using Tank2026.Models;
+using Tank2026.Audio;
 
 namespace Tank2026.Services;
 
@@ -20,6 +21,7 @@ public class GameEngine
     public List<Bullet> Bullets { get; } = [];
     public List<Explosion> Explosions { get; } = [];
     public List<Powerup> Powerups { get; } = [];
+    public List<FloatingText> FloatingTexts { get; } = [];
 
     private int _enemyFreezeTicks;
     private int _shovelTicks;
@@ -92,7 +94,7 @@ public class GameEngine
         var maxBullets = PlayerPowerLevel >= 3 ? 2 : 1;
         if (activeBullets >= maxBullets) return;
 
-        var cooldown = PlayerPowerLevel >= 2 ? 1 : 2;
+        var cooldown = PlayerPowerLevel >= 2 ? 3 : 5; // Fixed ticks
         _playerShootCooldown = TryFireFromTank(PlayerTank, _playerShootCooldown, cooldown);
     }
 
@@ -153,14 +155,6 @@ public class GameEngine
         }
 
         _elapsedMs += (int)_timer.Interval.TotalMilliseconds;
-        var minutes = _elapsedMs / 60000.0;
-        int newInterval = GameSettings.UpdateIntervalMs - (int)(150 * (minutes / 2.0));
-        if (newInterval < 100) newInterval = 100;
-
-        if (newInterval != (int)_timer.Interval.TotalMilliseconds)
-        {
-            _timer.Interval = TimeSpan.FromMilliseconds(newInterval);
-        }
 
         if (_playerShootCooldown > 0)
         {
@@ -190,6 +184,7 @@ public class GameEngine
         UpdatePowerups();
         UpdateBullets();
         UpdateExplosions();
+        UpdateFloatingTexts();
         SpawnEnemiesIfNeeded();
         UpdateHudText();
         GameUpdated?.Invoke();
@@ -221,9 +216,9 @@ public class GameEngine
             {
                 enemy.ShootCooldown--;
             }
-            else if (_random.Next(0, 100) < 24)
+            else if (_random.Next(0, 100) < 5)
             {
-                enemy.ShootCooldown = TryFireFromTank(enemy, enemy.ShootCooldown, 4);
+                enemy.ShootCooldown = TryFireFromTank(enemy, enemy.ShootCooldown, 15);
             }
         }
     }
@@ -251,13 +246,24 @@ public class GameEngine
             return cooldownTicks;
         }
 
+        int bulletCooldown = tank.IsPlayer ? 0 : CurrentLevel switch
+        {
+            0 => 3,
+            1 => 2,
+            _ => 1
+        };
+
         var bullet = new Bullet
         {
             X = next.x,
             Y = next.y,
             Direction = tank.Direction,
-            FiredByPlayer = tank.IsPlayer
+            FiredByPlayer = tank.IsPlayer,
+            MaxMoveCooldown = bulletCooldown,
+            MoveCooldown = bulletCooldown
         };
+
+        if (tank.IsPlayer) SoundManager.PlayShoot();
 
         // Important fix: close-range shot checks impact immediately.
         if (!ResolveBulletImpact(bullet, bullet.X, bullet.Y))
@@ -273,6 +279,14 @@ public class GameEngine
         for (var i = Bullets.Count - 1; i >= 0; i--)
         {
             var bullet = Bullets[i];
+            
+            if (bullet.MoveCooldown > 0)
+            {
+                bullet.MoveCooldown--;
+                continue;
+            }
+            bullet.MoveCooldown = bullet.MaxMoveCooldown;
+
             var next = GetNextPosition(bullet.X, bullet.Y, bullet.Direction);
             if (!Map.InBounds(next.x, next.y))
             {
@@ -326,8 +340,10 @@ public class GameEngine
                 {
                     enemy.IsAlive = false;
                     EnemyKills++;
-                    Score += enemy.EnemyType == EnemyType.Armor ? 400 : 100;
+                    var pts = enemy.EnemyType == EnemyType.Armor ? 400 : 100;
+                    Score += pts;
                     AddExplosion(enemy.X, enemy.Y);
+                    AddFloatingText(enemy.X, enemy.Y, $"+{pts}");
 
                     if (enemy.IsFlashing)
                     {
@@ -471,12 +487,20 @@ public class GameEngine
             var typeChance = _random.Next(0, 100);
             EnemyType eType = EnemyType.Basic;
             int health = 1;
-            int maxMoveSpeed = 2;
+
+            int baseSpeed = CurrentLevel switch
+            {
+                0 => 8,
+                1 => 5,
+                2 => 3,
+                _ => 1
+            };
+            int maxMoveSpeed = baseSpeed;
 
             if (typeChance < 20)
             {
                 eType = EnemyType.Fast;
-                maxMoveSpeed = 0;
+                maxMoveSpeed = Math.Max(0, baseSpeed - 3);
             }
             else if (typeChance < 40)
             {
@@ -499,8 +523,8 @@ public class GameEngine
                 Health = health,
                 MaxMoveCooldown = maxMoveSpeed,
                 IsFlashing = _random.Next(0, 10) < 2,
-                MoveCooldown = _random.Next(0, 2),
-                ShootCooldown = _random.Next(1, 4)
+                MoveCooldown = maxMoveSpeed,
+                ShootCooldown = _random.Next(10, 40)
             });
             _enemiesSpawnedTotal++;
         }
@@ -508,6 +532,7 @@ public class GameEngine
 
     private void AddExplosion(int x, int y)
     {
+        SoundManager.PlayExplosion();
         Explosions.Add(new Explosion
         {
             X = x,
@@ -524,6 +549,31 @@ public class GameEngine
             if (Explosions[i].RemainingTicks <= 0)
             {
                 Explosions.RemoveAt(i);
+            }
+        }
+    }
+
+    private void AddFloatingText(double x, double y, string text)
+    {
+        FloatingTexts.Add(new FloatingText
+        {
+            X = x,
+            Y = y,
+            Text = text,
+            MaxTicks = 20,
+            TicksRemaining = 20
+        });
+    }
+
+    private void UpdateFloatingTexts()
+    {
+        for (var i = FloatingTexts.Count - 1; i >= 0; i--)
+        {
+            FloatingTexts[i].TicksRemaining--;
+            FloatingTexts[i].Y -= 0.05;
+            if (FloatingTexts[i].TicksRemaining <= 0)
+            {
+                FloatingTexts.RemoveAt(i);
             }
         }
     }
@@ -560,6 +610,7 @@ public class GameEngine
 
     private void ApplyPowerup(PowerupType type)
     {
+        SoundManager.PlayPowerup();
         switch (type)
         {
             case PowerupType.Grenade:

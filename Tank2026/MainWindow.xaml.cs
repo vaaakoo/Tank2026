@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Input;
 using Tank2026.Core;
 using Tank2026.Services;
@@ -22,7 +22,6 @@ namespace Tank2026
             _renderer = new GameRenderer(GameCanvas);
 
             _gameEngine.GameUpdated += OnGameUpdated;
-            _gameEngine.Start();
             _renderer.Render(_gameEngine);
             StatusTextBlock.Text = _gameEngine.StatusText;
         }
@@ -43,6 +42,13 @@ namespace Tank2026
         {
             switch (e.Key)
             {
+                case Key.Enter:
+                    if (MenuOverlay.Visibility == Visibility.Visible)
+                    {
+                        MenuOverlay.Visibility = Visibility.Collapsed;
+                        _gameEngine.Start();
+                    }
+                    break;
                 case Key.Up:
                     _gameEngine.MovePlayer(Direction.Up);
                     break;

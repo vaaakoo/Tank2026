@@ -77,6 +77,7 @@ public class GameRenderer
         DrawBullets(gameEngine.Bullets);
         DrawExplosions(gameEngine.Explosions);
         DrawPowerups(gameEngine.Powerups);
+        DrawFloatingTexts(gameEngine.FloatingTexts);
     }
 
     private void DrawPowerups(System.Collections.Generic.IEnumerable<Powerup> powerups)
@@ -215,4 +216,23 @@ public class GameRenderer
             _canvas.Children.Add(flash);
         }
     }
+
+    private void DrawFloatingTexts(System.Collections.Generic.IEnumerable<FloatingText> texts)
+    {
+        foreach (var ft in texts)
+        {
+            var text = new TextBlock
+            {
+                Text = ft.Text,
+                Foreground = Brushes.White,
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                Opacity = (double)ft.TicksRemaining / ft.MaxTicks
+            };
+            Canvas.SetLeft(text, ft.X * GameSettings.TileSize + 4);
+            Canvas.SetTop(text, ft.Y * GameSettings.TileSize - 10);
+            _canvas.Children.Add(text);
+        }
+    }
 }
+

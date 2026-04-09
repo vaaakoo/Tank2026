@@ -2,6 +2,13 @@
 
 A modern, fast-paced C# WPF clone of the classic 1990 retro game **Battle City**. Defend your eagle, gather powerups, and survive progressively frantic waves of enemies!
 
+## Download & Play Now
+
+You can download the pre-compiled, fully standalone executable directly from GitHub without needing to compile it yourself:
+1. Navigate to the **Releases** tab on the right side of the GitHub repository.
+2. Download the `Tank2026.exe` asset from the latest release.
+3. Double-click the `.exe` to start playing immediately (No installation required)!
+
 ## Features
 
 * **Retro Vector Graphics**: Authentic pixel-art stylized tanks and tiles, fully drawn using zero-dependency vector geometries natively in WPF XAML paths!
@@ -34,4 +41,15 @@ Alternatively, if using the .NET CLI:
 ```bash
 cd Tank2026
 dotnet run
+```
+
+## How to Publish a Release
+
+If you are a developer looking to publish a new executable build to GitHub, run the following commands:
+```powershell
+# 1. Publish a self-contained single file executable
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+# 2. Upload the built executable to GitHub Releases (Requires GitHub CLI)
+gh release create v1.0.0 "Tank2026\bin\Release\net10.0-windows\win-x64\publish\Tank2026.exe" --title "Tank 2026 v1.0" --notes "Initial public MVP release."
 ```

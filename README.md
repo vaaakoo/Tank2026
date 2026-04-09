@@ -9,6 +9,8 @@ You can download the pre-compiled, fully standalone executable directly from Git
 2. Download the `Tank2026.exe` asset from the latest release.
 3. Double-click the `.exe` to start playing immediately (No installation required)!
 
+👉 https://github.com/vaaakoo/Tank2026/releases
+
 ## Features
 
 * **Retro Vector Graphics**: Authentic pixel-art stylized tanks and tiles, fully drawn using zero-dependency vector geometries natively in WPF XAML paths!
